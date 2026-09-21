@@ -80,6 +80,7 @@ import com.particlesdevs.photoncamera.api.CameraMode;
 import com.particlesdevs.photoncamera.api.CameraReflectionApi;
 import com.particlesdevs.photoncamera.api.Settings;
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
+import com.particlesdevs.photoncamera.api.OplusFullResolutionRaw;
 import com.particlesdevs.photoncamera.api.LogicalCameraResolver;
 import com.particlesdevs.photoncamera.app.PhotonCamera;
 import com.particlesdevs.photoncamera.circularbarlib.util.Motion;
@@ -1794,6 +1795,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     }
                 }
             }
+
+            // OPlus keeps native QCFA/remosaic RAW sizes out of the standard
+            // StreamConfigurationMap.  It exposes them through a dedicated
+            // characteristics tag instead; include those exact dimensions in
+            // Quad Bayer mode without affecting normal/binned capture.
+            for (Size oplusRawSize : OplusFullResolutionRaw.getSupportedRawSizes(characteristics)) {
+                if (!allTargets.contains(oplusRawSize)) {
+                    allTargets.add(oplusRawSize);
+                    Log.i(TAG, "Added OPlus full-resolution RAW target: " + oplusRawSize);
+                }
+            }
+            OplusFullResolutionRaw.logSensorModes(characteristics);
         }
         return allTargets;
     }
