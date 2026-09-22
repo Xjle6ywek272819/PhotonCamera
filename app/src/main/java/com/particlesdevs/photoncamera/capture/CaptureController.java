@@ -3873,7 +3873,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 && !IsoExpoSelector.HDR
                 && !isDualSession;
 
-        // OPlus operation mode 0x9003 only produces a valid native-resolution
+        // OP15 v5: OPlus operation mode 0x9003 only produces a valid native-resolution
         // stream when the full-size RAW surface is part of the repeating
         // request.  MOTION already has exactly that topology and is confirmed
         // working on the OP15; the normal PHOTO topology merely declares the
