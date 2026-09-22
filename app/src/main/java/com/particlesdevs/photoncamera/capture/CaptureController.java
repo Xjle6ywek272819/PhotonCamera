@@ -3158,25 +3158,37 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private int applyOplusNativeSensorMode(CaptureRequest.Builder builder) {
         int applied = 0;
-        try {
-            CaptureRequest.Key<Integer> forceMode = new CaptureRequest.Key<>(
-                    OplusFullResolutionRaw.FORCE_SENSOR_MODE, Integer.class);
-            builder.set(forceMode, 0);
-            applied++;
-            Log.i(TAG, "OPlus full RAW: ForceSensorMode=0");
-        } catch (Exception e) {
-            Log.w(TAG, "OPlus full RAW: ForceSensorMode rejected", e);
-        }
-        try {
-            CaptureRequest.Key<int[]> modesInConfig = new CaptureRequest.Key<>(
-                    OplusFullResolutionRaw.SENSOR_MODES_IN_CONFIG, int[].class);
-            builder.set(modesInConfig, new int[] {0});
-            applied++;
-            Log.i(TAG, "OPlus full RAW: SensorModesInConfig=[0]");
-        } catch (Exception e) {
-            Log.w(TAG, "OPlus full RAW: SensorModesInConfig rejected", e);
-        }
+        // Resolve the actual keys published by this HAL. Constructing keys only
+        // from a name loses the vendor id on newer Qualcomm camera providers and
+        // can appear to succeed while the provider ignores the metadata.
+        applied += setAdvertisedSessionByte(builder,
+                OplusFullResolutionRaw.ENABLE_XCFA_OPTIMIZATION, (byte) 1);
+        applied += setAdvertisedSessionByte(builder,
+                OplusFullResolutionRaw.ENABLE_IDEAL_RAW, (byte) 1);
         return applied;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private int setAdvertisedSessionByte(CaptureRequest.Builder builder,
+                                         String name, byte value) {
+        try {
+            List<CaptureRequest.Key<?>> keys = mCameraCharacteristics.getAvailableSessionKeys();
+            if (keys == null) {
+                Log.w(TAG, "OPlus full RAW: no advertised session keys for " + name);
+                return 0;
+            }
+            for (CaptureRequest.Key<?> key : keys) {
+                if (name.equals(key.getName())) {
+                    builder.set((CaptureRequest.Key) key, value);
+                    Log.i(TAG, "OPlus full RAW: session " + name + "=" + value);
+                    return 1;
+                }
+            }
+            Log.w(TAG, "OPlus full RAW: session key absent: " + name);
+        } catch (Exception e) {
+            Log.w(TAG, "OPlus full RAW: session key rejected: " + name, e);
+        }
+        return 0;
     }
 
     /**
@@ -4653,6 +4665,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private int resolveVideoSessionType() {
         int fallback = sessionType;
         try {
+            if (!isVideoMode()
+                    && PhotonCamera.getSettings() != null
+                    && PhotonCamera.getSettings().QuadBayer
+                    && OplusFullResolutionRaw.isNativeResolution(target)
+                    && !OplusFullResolutionRaw.getSupportedRawSizes(mCameraCharacteristics).isEmpty()) {
+                Log.i(TAG, "OPlus full RAW: operation mode=0x9003 (50 MP QCFA/hw remosaic)");
+                return OplusFullResolutionRaw.OPLUS_FULL_SIZE_QCFA_OPERATION_MODE;
+            }
             if (mIsRecordingVideo && mHighSpeedRecording
                     && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 Log.d(TAG, "video session type=HIGH_SPEED for 60fps recording");
