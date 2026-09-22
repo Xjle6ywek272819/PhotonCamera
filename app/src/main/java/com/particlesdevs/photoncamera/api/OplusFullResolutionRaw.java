@@ -29,6 +29,13 @@ public final class OplusFullResolutionRaw {
             "org.codeaurora.qcamera3.sessionParameters.SensorModesInConfig";
     public static final String FORCE_SENSOR_MODE =
             "org.codeaurora.qcamera3.sessionParameters.ForceSensorMode";
+    public static final String ENABLE_XCFA_OPTIMIZATION =
+            "org.codeaurora.qcamera3.sessionParameters.EnableXCFAOptimization";
+    public static final String ENABLE_IDEAL_RAW =
+            "org.codeaurora.qcamera3.sessionParameters.EnableIdealRAW";
+
+    /** Vendor operation mode used by OP15's engineering camera for 50 MP QCFA output. */
+    public static final int OPLUS_FULL_SIZE_QCFA_OPERATION_MODE = 0x9003;
 
     private OplusFullResolutionRaw() {}
 
