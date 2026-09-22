@@ -3181,8 +3181,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // can appear to succeed while the provider ignores the metadata.
         applied += setAdvertisedSessionByte(builder,
                 OplusFullResolutionRaw.ENABLE_XCFA_OPTIMIZATION, (byte) 1);
-        applied += setAdvertisedSessionByte(builder,
-                OplusFullResolutionRaw.ENABLE_IDEAL_RAW, (byte) 1);
+        // A/B test: leave EnableIdealRAW unset. This checks whether operation
+        // mode 0x9003 can expose the native QCFA stream without selecting the
+        // Qualcomm IFE/BPS Ideal RAW path.
         return applied;
     }
 
