@@ -3643,6 +3643,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (isZslMode()) {
             mPreviewRequestBuilder.addTarget(mImageReaderRaw.getSurface());
+            if (isOplusFullRawPhotoZsl()) {
+                Log.i(TAG, "OPlus full RAW PHOTO: attached RAW surface to repeating request");
+            }
         }
         mInitialMeteringAF = mPreviewRequestBuilder.get(CONTROL_AF_REGIONS);
         mPreviewMeteringAF = mInitialMeteringAF;
@@ -3866,9 +3869,32 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     public boolean isZslMode() {
-        return PhotonCamera.getSettings().selectedMode == CameraMode.MOTION
+        boolean motionZsl = PhotonCamera.getSettings().selectedMode == CameraMode.MOTION
                 && !IsoExpoSelector.HDR
                 && !isDualSession;
+
+        // OPlus operation mode 0x9003 only produces a valid native-resolution
+        // stream when the full-size RAW surface is part of the repeating
+        // request.  MOTION already has exactly that topology and is confirmed
+        // working on the OP15; the normal PHOTO topology merely declares the
+        // RAW output and leaves the HAL with a black preview.  Reuse the ZSL
+        // transport for this one PHOTO configuration.  Ordinary/binned PHOTO,
+        // other sensors and other vendors keep the existing still-capture path.
+        return motionZsl || isOplusFullRawPhotoZsl();
+    }
+
+    private boolean isOplusFullRawPhotoZsl() {
+        try {
+            return !isDualSession
+                    && PhotonCamera.getSettings() != null
+                    && PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
+                    && PhotonCamera.getSettings().QuadBayer
+                    && OplusFullResolutionRaw.isNativeResolution(target)
+                    && mCameraCharacteristics != null
+                    && !OplusFullResolutionRaw.getSupportedRawSizes(mCameraCharacteristics).isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
