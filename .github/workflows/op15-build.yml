@@ -25,9 +25,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Use original PhotonCamera package for A/B test
-        run: sed -i "s/applicationId 'com.zeku.camera2tool'/applicationId 'com.particlesdevs.photoncamera'/" app/build.gradle
-
       - name: Run unit tests and build APK
         run: ./gradlew testDebugUnitTest assembleDebug --stacktrace
 
