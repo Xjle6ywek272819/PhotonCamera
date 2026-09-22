@@ -420,6 +420,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private final ArrayDeque<Image> mZslRingBuffer = new ArrayDeque<>();
     private final Object mZslBufferLock = new Object();
     private volatile boolean mZslCapturing = false;
+    /** Number of dedicated still frames expected while OP15 preview RAW is otherwise discarded. */
+    private final AtomicInteger mOplusFullRawPendingFrames = new AtomicInteger(0);
 
     public interface RawFrameCallback {
         void onRawFrameAvailable(@NonNull Image image, CaptureResult result);
@@ -467,17 +469,26 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 synchronized (mZslBufferLock) {
                     mZslRingBuffer.addLast(img);
-                    // Native 8192x6144 RAW frames are very large. PHOTO only
-                    // needs only a tiny ring to keep the OP15 0x9003 stream
-                    // alive; a normal multi-frame ring exhausts app memory.
-                    int maxFrames = isOplusFullRawPhotoZsl()
-                            ? Math.min(PhotonCamera.getSettings().frameCount, 2)
-                            : Math.min(PhotonCamera.getSettings().frameCount, 37);
+                    int maxFrames = Math.min(PhotonCamera.getSettings().frameCount, 37);
                     while (mZslRingBuffer.size() > maxFrames) {
                         Image old = mZslRingBuffer.pollFirst();
                         if (old != null) old.close();
                     }
                 }
+                return;
+            }
+            if (isOplusFullRawPhotoStreaming()) {
+                // The OP15 HAL needs RAW attached to the repeating request to
+                // keep operation mode 0x9003 alive. These preview RAWs are not
+                // photo frames: discard them immediately. Only requests from
+                // the dedicated still burst are admitted to ImageSaver.
+                int remaining = mOplusFullRawPendingFrames.getAndUpdate(v -> v > 0 ? v - 1 : 0);
+                if (remaining <= 0) {
+                    Image img = reader.acquireLatestImage();
+                    if (img != null) img.close();
+                    return;
+                }
+                mImageSaver.initProcess(reader);
                 return;
             }
             if (onUnlimited && !unlimitedStarted) {
@@ -2643,10 +2654,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             maxjpg = RAW_VIDEO_MAX_IMAGES;
         if (mTargetFormat == mPreviewTargetFormat && isDualSession)
             maxjpg = PhotonCamera.getSettings().frameCount + 3;
-        if (isZslMode())
-            maxjpg = isOplusFullRawPhotoZsl()
-                    ? 3
-                    : Math.min(PhotonCamera.getSettings().frameCount + 3, 40);
+        if (isOplusFullRawPhotoStreaming())
+            maxjpg = Math.min(PhotonCamera.getSettings().frameCount, 5) + 3;
+        else if (isZslMode())
+            maxjpg = Math.min(PhotonCamera.getSettings().frameCount + 3, 40);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         Size aspect = getAspect(PhotonCamera.getSettings().selectedMode);
         if(preview.getWidth() > preview.getHeight())
@@ -3648,11 +3659,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 while ((stale = mImageReaderRaw.acquireNextImage()) != null) stale.close();
             } catch (Exception ignored) {}
         }
-        if (isZslMode()) {
+        if (isZslMode() || isOplusFullRawPhotoStreaming()) {
             mPreviewRequestBuilder.addTarget(mImageReaderRaw.getSurface());
-            if (isOplusFullRawPhotoZsl()) {
-                Log.i(TAG, "OPlus full RAW PHOTO: attached RAW surface to repeating request");
-            }
+            if (isOplusFullRawPhotoStreaming())
+                Log.i(TAG, "OPlus full RAW PHOTO: streaming RAW active, preview frames discarded");
         }
         mInitialMeteringAF = mPreviewRequestBuilder.get(CONTROL_AF_REGIONS);
         mPreviewMeteringAF = mInitialMeteringAF;
@@ -3876,21 +3886,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     public boolean isZslMode() {
-        boolean motionZsl = PhotonCamera.getSettings().selectedMode == CameraMode.MOTION
+        return PhotonCamera.getSettings().selectedMode == CameraMode.MOTION
                 && !IsoExpoSelector.HDR
                 && !isDualSession;
-
-        // OP15 v5: OPlus operation mode 0x9003 only produces a valid native-resolution
-        // stream when the full-size RAW surface is part of the repeating
-        // request.  MOTION already has exactly that topology and is confirmed
-        // working on the OP15; the normal PHOTO topology merely declares the
-        // RAW output and leaves the HAL with a black preview.  Reuse the ZSL
-        // transport for this one PHOTO configuration.  Ordinary/binned PHOTO,
-        // other sensors and other vendors keep the existing still-capture path.
-        return motionZsl || isOplusFullRawPhotoZsl();
     }
 
-    private boolean isOplusFullRawPhotoZsl() {
+    private boolean isOplusFullRawPhotoStreaming() {
         try {
             return !isDualSession
                     && PhotonCamera.getSettings() != null
@@ -3932,9 +3933,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mZslCapturing = true;
         burst = false;
 
-        int frameCount = isOplusFullRawPhotoZsl()
-                ? Math.min(FrameNumberSelector.getFrames(), 2)
-                : FrameNumberSelector.getFrames();
+        int frameCount = FrameNumberSelector.getFrames();
         cameraRotation = PhotonCamera.getGravity().getCameraRotation(mSensorOrientation);
         BurstShakiness = new ArrayList<>();
         mExposures = new HashMap<>();
@@ -4196,6 +4195,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             SaverImplementation.IMAGE_BUFFER.clear();
 
             int frameCount = FrameNumberSelector.getFrames();
+            if (isOplusFullRawPhotoStreaming()) {
+                frameCount = Math.min(frameCount, 5);
+            }
             //if (frameCount == 1) frameCount++;
             cameraEventsListener.onFrameCountSet(frameCount);
             Log.d(TAG, "HDRFact1:" + paramController.isManualMode() + " HDRFact2:" + PhotonCamera.getSettings().alignAlgorithm);
@@ -4441,6 +4443,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             else {
             mCaptureSession.stopRepeating();
             mCaptureSession.abortCaptures();
+                if (isOplusFullRawPhotoStreaming()) {
+                    // Remove the last repeating-request RAW before admitting
+                    // exactly the dedicated TEMPLATE_STILL_CAPTURE results.
+                    try {
+                        Image stale;
+                        while ((stale = mImageReaderRaw.acquireNextImage()) != null) {
+                            stale.close();
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    mOplusFullRawPendingFrames.set(frameCount);
+                    Log.i(TAG, "OPlus full RAW PHOTO: starting still burst, frames=" + frameCount);
+                }
                 switch (PhotonCamera.getSettings().selectedMode) {
                     case UNLIMITED:
                         mCaptureSession.setRepeatingBurst(captures, CaptureCallback, mBackgroundHandler);
@@ -4456,6 +4471,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             }
         } catch (CameraAccessException e) {
+            mOplusFullRawPendingFrames.set(0);
             Log.e(TAG, Log.getStackTraceString(e));
         }
     }
