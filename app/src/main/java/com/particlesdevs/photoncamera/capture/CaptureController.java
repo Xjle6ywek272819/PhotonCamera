@@ -3092,7 +3092,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } catch (Exception e) {
             Log.w(TAG, "buildSessionParams: video list load failed", e);
         }
-        if (sensorKeys.isEmpty() && videoKeys.isEmpty() && videoFpsRange == null) return null;
+        boolean oplusNativeRaw = PhotonCamera.getSettings() != null
+                && PhotonCamera.getSettings().QuadBayer
+                && OplusFullResolutionRaw.isNativeResolution(target)
+                && !OplusFullResolutionRaw.getSupportedRawSizes(mCameraCharacteristics).isEmpty();
+        if (sensorKeys.isEmpty() && videoKeys.isEmpty() && videoFpsRange == null
+                && !oplusNativeRaw) return null;
         CaptureRequest.Builder builder;
         try {
             builder = mCameraDevice.createCaptureRequest(
@@ -3104,6 +3109,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             return null;
         }
         int applied = 0;
+        if (oplusNativeRaw) {
+            applied += applyOplusNativeSensorMode(builder);
+        }
         applied += setSessionKeys(builder, sensorKeys);
         applied += setSessionKeys(builder, videoKeys);
         if (videoFpsRange != null) {
@@ -3138,6 +3146,37 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w(TAG, "buildSessionParams: build failed", e);
             return null;
         }
+    }
+
+    /**
+     * OPlus publishes native 50 MP output sizes but does not switch away from
+     * the 2x2-binned sensor mode merely because an 8192x6144 buffer is
+     * configured. Force sensor-table mode 0, which ID2 advertises as
+     * 8192x6144@30. The two tags are tried independently because recent OPlus
+     * HALs expose both names but may accept only one of them.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private int applyOplusNativeSensorMode(CaptureRequest.Builder builder) {
+        int applied = 0;
+        try {
+            CaptureRequest.Key<Integer> forceMode = new CaptureRequest.Key<>(
+                    OplusFullResolutionRaw.FORCE_SENSOR_MODE, Integer.class);
+            builder.set(forceMode, 0);
+            applied++;
+            Log.i(TAG, "OPlus full RAW: ForceSensorMode=0");
+        } catch (Exception e) {
+            Log.w(TAG, "OPlus full RAW: ForceSensorMode rejected", e);
+        }
+        try {
+            CaptureRequest.Key<int[]> modesInConfig = new CaptureRequest.Key<>(
+                    OplusFullResolutionRaw.SENSOR_MODES_IN_CONFIG, int[].class);
+            builder.set(modesInConfig, new int[] {0});
+            applied++;
+            Log.i(TAG, "OPlus full RAW: SensorModesInConfig=[0]");
+        } catch (Exception e) {
+            Log.w(TAG, "OPlus full RAW: SensorModesInConfig rejected", e);
+        }
+        return applied;
     }
 
     /**
