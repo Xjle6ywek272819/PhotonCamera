@@ -468,10 +468,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 synchronized (mZslBufferLock) {
                     mZslRingBuffer.addLast(img);
                     // Native 8192x6144 RAW frames are very large. PHOTO only
-                    // needs the newest one to keep the OP15 0x9003 stream
+                    // needs only a tiny ring to keep the OP15 0x9003 stream
                     // alive; a normal multi-frame ring exhausts app memory.
                     int maxFrames = isOplusFullRawPhotoZsl()
-                            ? 1
+                            ? Math.min(PhotonCamera.getSettings().frameCount, 2)
                             : Math.min(PhotonCamera.getSettings().frameCount, 37);
                     while (mZslRingBuffer.size() > maxFrames) {
                         Image old = mZslRingBuffer.pollFirst();
@@ -3933,7 +3933,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         burst = false;
 
         int frameCount = isOplusFullRawPhotoZsl()
-                ? 1
+                ? Math.min(FrameNumberSelector.getFrames(), 2)
                 : FrameNumberSelector.getFrames();
         cameraRotation = PhotonCamera.getGravity().getCameraRotation(mSensorOrientation);
         BurstShakiness = new ArrayList<>();
