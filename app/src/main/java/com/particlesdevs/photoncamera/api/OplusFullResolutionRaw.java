@@ -27,6 +27,8 @@ public final class OplusFullResolutionRaw {
             "org.quic.camera2.sensormode.info.SensorModeTable";
     public static final String SENSOR_MODES_IN_CONFIG =
             "org.codeaurora.qcamera3.sessionParameters.SensorModesInConfig";
+    public static final String FORCE_SENSOR_MODE =
+            "org.codeaurora.qcamera3.sessionParameters.ForceSensorMode";
 
     private OplusFullResolutionRaw() {}
 
@@ -54,6 +56,11 @@ public final class OplusFullResolutionRaw {
             unique.add(new Size(width, height));
         }
         return new ArrayList<>(unique);
+    }
+
+    /** True when the requested output is larger than the public binned stream. */
+    public static boolean isNativeResolution(Size size) {
+        return size != null && (long) size.getWidth() * size.getHeight() > 30_000_000L;
     }
 
     /**
