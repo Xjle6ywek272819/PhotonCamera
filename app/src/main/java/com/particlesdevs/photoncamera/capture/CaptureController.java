@@ -467,7 +467,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 synchronized (mZslBufferLock) {
                     mZslRingBuffer.addLast(img);
-                    int maxFrames = Math.min(PhotonCamera.getSettings().frameCount, 37);
+                    // Native 8192x6144 RAW frames are very large. PHOTO only
+                    // needs the newest one to keep the OP15 0x9003 stream
+                    // alive; a normal multi-frame ring exhausts app memory.
+                    int maxFrames = isOplusFullRawPhotoZsl()
+                            ? 1
+                            : Math.min(PhotonCamera.getSettings().frameCount, 37);
                     while (mZslRingBuffer.size() > maxFrames) {
                         Image old = mZslRingBuffer.pollFirst();
                         if (old != null) old.close();
@@ -2639,7 +2644,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (mTargetFormat == mPreviewTargetFormat && isDualSession)
             maxjpg = PhotonCamera.getSettings().frameCount + 3;
         if (isZslMode())
-            maxjpg = Math.min(PhotonCamera.getSettings().frameCount + 3, 40);
+            maxjpg = isOplusFullRawPhotoZsl()
+                    ? 3
+                    : Math.min(PhotonCamera.getSettings().frameCount + 3, 40);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         Size aspect = getAspect(PhotonCamera.getSettings().selectedMode);
         if(preview.getWidth() > preview.getHeight())
@@ -3925,7 +3932,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mZslCapturing = true;
         burst = false;
 
-        int frameCount = FrameNumberSelector.getFrames();
+        int frameCount = isOplusFullRawPhotoZsl()
+                ? 1
+                : FrameNumberSelector.getFrames();
         cameraRotation = PhotonCamera.getGravity().getCameraRotation(mSensorOrientation);
         BurstShakiness = new ArrayList<>();
         mExposures = new HashMap<>();
