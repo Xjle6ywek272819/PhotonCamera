@@ -2655,7 +2655,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (mTargetFormat == mPreviewTargetFormat && isDualSession)
             maxjpg = PhotonCamera.getSettings().frameCount + 3;
         if (isOplusFullRawPhotoStreaming())
-            maxjpg = Math.min(PhotonCamera.getSettings().frameCount, 5) + 3;
+            maxjpg = PhotonCamera.getSettings().frameCount + 3;
         else if (isZslMode())
             maxjpg = Math.min(PhotonCamera.getSettings().frameCount + 3, 40);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
@@ -4195,9 +4195,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             SaverImplementation.IMAGE_BUFFER.clear();
 
             int frameCount = FrameNumberSelector.getFrames();
-            if (isOplusFullRawPhotoStreaming()) {
-                frameCount = Math.min(frameCount, 5);
-            }
             //if (frameCount == 1) frameCount++;
             cameraEventsListener.onFrameCountSet(frameCount);
             Log.d(TAG, "HDRFact1:" + paramController.isManualMode() + " HDRFact2:" + PhotonCamera.getSettings().alignAlgorithm);
