@@ -39,10 +39,11 @@ android {
 
     defaultConfig {
         compileSdk 36
-        // Qualcomm/OPlus camera HALs traditionally grant their extended camera
-        // capabilities to this package alias. Keep the namespace unchanged so
-        // the source tree does not need a destructive package-wide rename.
-        applicationId 'org.codeaurora.snapcam'
+        // OP15's CameraHWConfiguration maps the engineering camera package to
+        // vendor operation mode 0x9003 (quad 50 MP, sensor mode 0).
+        // Keep the Java namespace unchanged; only the installed package id is
+        // relevant to the OPlus extension-layer allowlist.
+        applicationId 'com.zeku.camera2tool'
         minSdkVersion 26
         targetSdkVersion 35
         versionCode versionBuild
