@@ -31,6 +31,10 @@ public final class OplusFullResolutionRaw {
             "org.codeaurora.qcamera3.sessionParameters.ForceSensorMode";
     public static final String ENABLE_XCFA_OPTIMIZATION =
             "org.codeaurora.qcamera3.sessionParameters.EnableXCFAOptimization";
+    public static final String ENABLE_HDR_DCG_MODE =
+            "org.codeaurora.qcamera3.sessionParameters.EnableHDRDCGMode";
+    public static final String SUPPORTED_HDR_DCG_MODES =
+            "org.codeaurora.qcamera3.supportedHDRmodes.HDRDCGModes";
     public static final String ENABLE_IDEAL_RAW =
             "org.codeaurora.qcamera3.sessionParameters.EnableIdealRAW";
 
@@ -68,6 +72,23 @@ public final class OplusFullResolutionRaw {
     /** True when the requested output is larger than the public binned stream. */
     public static boolean isNativeResolution(Size size) {
         return size != null && (long) size.getWidth() * size.getHeight() > 30_000_000L;
+    }
+
+    /** True when this camera advertises at least one hardware DCG HDR mode. */
+    public static boolean supportsHdrDcg(CameraCharacteristics characteristics) {
+        if (characteristics == null) return false;
+        try {
+            CameraCharacteristics.Key<int[]> key =
+                    new CameraCharacteristics.Key<>(SUPPORTED_HDR_DCG_MODES, int[].class);
+            int[] modes = characteristics.get(key);
+            if (modes == null) return false;
+            for (int mode : modes) {
+                if (mode != 0) return true;
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "OPlus HDR DCG capability unavailable: " + e);
+        }
+        return false;
     }
 
     /**
