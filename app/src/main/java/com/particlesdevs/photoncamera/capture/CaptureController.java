@@ -3114,8 +3114,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 && PhotonCamera.getSettings().QuadBayer
                 && OplusFullResolutionRaw.isNativeResolution(target)
                 && !OplusFullResolutionRaw.getSupportedRawSizes(mCameraCharacteristics).isEmpty();
+        boolean oplusHdrDcg = PhotonCamera.getSettings() != null
+                && PhotonCamera.getSettings().selectedMode == CameraMode.PHOTO
+                && !PhotonCamera.getSettings().QuadBayer
+                && OplusFullResolutionRaw.supportsHdrDcg(mCameraCharacteristics);
         if (sensorKeys.isEmpty() && videoKeys.isEmpty() && videoFpsRange == null
-                && !oplusNativeRaw) return null;
+                && !oplusNativeRaw && !oplusHdrDcg) return null;
         CaptureRequest.Builder builder;
         try {
             builder = mCameraDevice.createCaptureRequest(
@@ -3129,6 +3133,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         int applied = 0;
         if (oplusNativeRaw) {
             applied += applyOplusNativeSensorMode(builder);
+        } else if (oplusHdrDcg) {
+            applied += setAdvertisedSessionInt(builder,
+                    OplusFullResolutionRaw.ENABLE_HDR_DCG_MODE, 1);
         }
         applied += setSessionKeys(builder, sensorKeys);
         applied += setSessionKeys(builder, videoKeys);
@@ -3206,6 +3213,29 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w(TAG, "OPlus full RAW: session key absent: " + name);
         } catch (Exception e) {
             Log.w(TAG, "OPlus full RAW: session key rejected: " + name, e);
+        }
+        return 0;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private int setAdvertisedSessionInt(CaptureRequest.Builder builder,
+                                        String name, int value) {
+        try {
+            List<CaptureRequest.Key<?>> keys = mCameraCharacteristics.getAvailableSessionKeys();
+            if (keys == null) {
+                Log.w(TAG, "OPlus HDR DCG: no advertised session keys for " + name);
+                return 0;
+            }
+            for (CaptureRequest.Key<?> key : keys) {
+                if (name.equals(key.getName())) {
+                    builder.set((CaptureRequest.Key) key, value);
+                    Log.i(TAG, "OPlus HDR DCG: session " + name + "=" + value);
+                    return 1;
+                }
+            }
+            Log.w(TAG, "OPlus HDR DCG: session key absent: " + name);
+        } catch (Exception e) {
+            Log.w(TAG, "OPlus HDR DCG: session key rejected: " + name, e);
         }
         return 0;
     }
